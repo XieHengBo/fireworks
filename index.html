@@ -235,11 +235,19 @@
             fireworks.push(new Firework());
         }
         
-        // 自动燃放 - 使用递归代替 setTimeout 链，防止重复
+        // 自动燃放 - 每次随机 1-6 个烟花
         function autoLaunch() {
-            if (!isActive) return; // 页面非激活时不发射
+            if (!isActive) return;
             
-            createFirework();
+            // 随机生成 1-6 个烟花
+            const batchCount = Math.floor(Math.random() * 6) + 1;
+            
+            for (let i = 0; i < batchCount; i++) {
+                // 错落发射，间隔 0-500ms
+                setTimeout(() => {
+                    createFirework();
+                }, Math.random() * 500);
+            }
             
             // 随机间隔 1.5-3.5 秒
             const nextTime = Math.random() * 2000 + 1500;
