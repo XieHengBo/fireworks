@@ -90,22 +90,24 @@
         ];
         
         class Particle {
-            constructor(x, y, color) {
+            constructor(x, y, color, velocity, isCore = false) {
                 this.x = x;
                 this.y = y;
                 this.color = color;
+                this.isCore = isCore;
                 
-                const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 4 + 1.5;
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
+                // 使用传入的速度或随机生成
+                this.vx = velocity ? velocity.x : (Math.random() - 0.5) * 3;
+                this.vy = velocity ? velocity.y : (Math.random() - 0.5) * 3;
                 
-                this.gravity = 0.12;
-                this.friction = 0.97;
+                this.gravity = 0.15;
+                this.friction = 0.96;
                 this.alpha = 1;
-                this.decay = Math.random() * 0.015 + 0.01;
-                this.size = Math.random() * 2.5 + 1;
-                this.blink = Math.random() * 0.3;
+                this.decay = isCore ? 0.008 : (Math.random() * 0.012 + 0.008);
+                this.size = isCore ? Math.random() * 2 + 1.5 : Math.random() * 1.5 + 0.5;
+                
+                // 燃烧时间
+                this.burnTime = isCore ? 80 : Math.random() * 40 + 30;
             }
             
             update() {
@@ -116,11 +118,13 @@
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                this.alpha -= this.decay;
+                this.burnTime--;
                 
-                // 闪烁效果
-                if (Math.random() > 0.95) {
-                    this.alpha -= this.blink;
+                // 燃烧末期快速衰减
+                if (this.burnTime < 10) {
+                    this.alpha -= this.decay * 2;
+                } else {
+                    this.alpha -= this.decay;
                 }
             }
             
@@ -130,27 +134,29 @@
                 ctx.save();
                 ctx.globalAlpha = this.alpha;
                 
-                // 光晕
+                // 核心粒子更亮更大
+                const glowSize = this.isCore ? this.size * 3 : this.size * 2;
                 const gradient = ctx.createRadialGradient(
                     this.x, this.y, 0,
-                    this.x, this.y, this.size * 3
+                    this.x, this.y, glowSize
                 );
-                gradient.addColorStop(0, this.color);
-                gradient.addColorStop(0.4, this.color);
-                gradient.addColorStop(1, 'transparent');
+                
+                if (this.isCore) {
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(0.3, this.color);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.shadowBlur = 12;
+                } else {
+                    gradient.addColorStop(0, this.color);
+                    gradient.addColorStop(0.5, this.color);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.shadowBlur = 6;
+                }
                 
                 ctx.fillStyle = gradient;
-                ctx.shadowBlur = 15;
                 ctx.shadowColor = this.color;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // 核心亮点
-                ctx.fillStyle = '#ffffff';
-                ctx.shadowBlur = 5;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, glowSize, 0, Math.PI * 2);
                 ctx.fill();
                 
                 ctx.restore();
@@ -200,12 +206,63 @@
             
             explode() {
                 this.exploded = true;
-                const count = 80 + Math.random() * 40;
                 
-                for (let i = 0; i < count; i++) {
-                    const color = this.palette[Math.floor(Math.random() * this.palette.length)];
-                    particles.push(new Particle(this.x, this.y, color));
+                // 真实烟花：分层爆炸，粒子更少更真实
+                // 核心亮球（约20个）
+                const coreCount = 15 + Math.floor(Math.random() * 10);
+                for (let i = 0; i < coreCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 2 + 0.5;
+                    const velocity = {
+                        x: Math.cos(angle) * speed,
+                        y: Math.sin(angle) * speed
+                    };
+                    particles.push(new Particle(this.x, this.y, '#ffffff', velocity, true));
                 }
+                
+                // 中层彩色（约30个）
+                const midCount = 25 + Math.floor(Math.random() * 15);
+                for (let i = 0; i < midCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 4 + 2;
+                    const color = this.palette[Math.floor(Math.random() * this.palette.length)];
+                    const velocity = {
+                        x: Math.cos(angle) * speed,
+                        y: Math.sin(angle) * speed
+                    };
+                    particles.push(new Particle(this.x, this.y, color, velocity, false));
+                }
+                
+                // 外层小星点（约20个）
+                const outerCount = 15 + Math.floor(Math.random() * 10);
+                for (let i = 0; i < outerCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 6 + 3;
+                    const color = this.palette[Math.floor(Math.random() * this.palette.length)];
+                    const velocity = {
+                        x: Math.cos(angle) * speed,
+                        y: Math.sin(angle) * speed
+                    };
+                    const p = new Particle(this.x, this.y, color, velocity, false);
+                    p.size *= 0.6; // 更小
+                    p.decay = 0.015; // 更快消失
+                    particles.push(p);
+                }
+                
+                // 延迟二次微爆（模拟未燃尽碎片）
+                setTimeout(() => {
+                    for (let i = 0; i < 8; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = Math.random() * 1.5 + 0.5;
+                        const velocity = {
+                            x: Math.cos(angle) * speed,
+                            y: Math.sin(angle) * speed
+                        };
+                        const p = new Particle(this.x, this.y, '#ffffff', velocity, true);
+                        p.burnTime = 20;
+                        particles.push(p);
+                    }
+                }, 150);
                 
                 // 通知该烟花已绽放完成
                 if (this.onExplodeCallback) {
