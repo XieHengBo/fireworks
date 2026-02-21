@@ -56,6 +56,7 @@
         let stars = [];
         let autoTimer = null; // 用于存储定时器，防止重复
         let isActive = true;  // 页面是否激活
+        let pendingFireworks = 0; // 待发射的烟花数量，防止累积过多
         
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -233,24 +234,36 @@
         
         function createFirework() {
             fireworks.push(new Firework());
+            pendingFireworks--; // 减少待发射计数
         }
         
         // 自动燃放 - 每次随机 1-6 个烟花
         function autoLaunch() {
-            if (!isActive) return;
+            if (!isActive) return; // 页面非激活时不发射
+            
+            // 如果还有待发射的烟花，跳过这次循环，防止累积
+            if (pendingFireworks > 0) {
+                autoTimer = setTimeout(autoLaunch, 500);
+                return;
+            }
             
             // 随机生成 1-6 个烟花
             const batchCount = Math.floor(Math.random() * 6) + 1;
+            pendingFireworks = batchCount; // 记录待发射数量
             
             for (let i = 0; i < batchCount; i++) {
-                // 错落发射，间隔 0-500ms
+                // 错落发射，间隔 200-800ms，避免同时触发
                 setTimeout(() => {
-                    createFirework();
-                }, Math.random() * 500);
+                    if (isActive) { // 再次检查页面状态
+                        createFirework();
+                    } else {
+                        pendingFireworks = 0; // 页面隐藏时清空待发射
+                    }
+                }, 200 + Math.random() * 600);
             }
             
-            // 随机间隔 1.5-3.5 秒
-            const nextTime = Math.random() * 2000 + 1500;
+            // 随机间隔 2-4 秒，给足时间发射完
+            const nextTime = Math.random() * 2000 + 2000;
             autoTimer = setTimeout(autoLaunch, nextTime);
         }
         
@@ -261,6 +274,7 @@
                 clearTimeout(autoTimer);
                 autoTimer = null;
             }
+            pendingFireworks = 0; // 重置待发射计数
             
             // 初始连发
             setTimeout(() => createFirework(), 500);
@@ -277,6 +291,7 @@
             if (document.hidden) {
                 // 页面隐藏：停止自动发射
                 isActive = false;
+                pendingFireworks = 0; // 清空待发射队列
                 if (autoTimer) {
                     clearTimeout(autoTimer);
                     autoTimer = null;
