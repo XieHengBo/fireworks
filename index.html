@@ -56,7 +56,7 @@
         let stars = [];
         let autoTimer = null; // 用于存储定时器，防止重复
         let isActive = true;  // 页面是否激活
-        let pendingFireworks = 0; // 待发射的烟花数量，防止累积过多
+        let isBatchRunning = false; // 是否有批次正在运行，防止重叠
         
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -158,13 +158,14 @@
         }
         
         class Firework {
-            constructor() {
+            constructor(onExplodeCallback) {
                 this.x = Math.random() * width * 0.8 + width * 0.1;
                 this.y = height;
                 this.targetY = Math.random() * height * 0.4 + height * 0.1;
                 this.palette = palettes[Math.floor(Math.random() * palettes.length)];
                 this.color = this.palette[0];
                 this.exploded = false;
+                this.onExplodeCallback = onExplodeCallback; // 爆炸完成回调
                 
                 const distance = this.y - this.targetY;
                 this.speed = Math.sqrt(distance * 0.12);
@@ -205,6 +206,11 @@
                     const color = this.palette[Math.floor(Math.random() * this.palette.length)];
                     particles.push(new Particle(this.x, this.y, color));
                 }
+                
+                // 通知该烟花已绽放完成
+                if (this.onExplodeCallback) {
+                    this.onExplodeCallback();
+                }
             }
             
             draw() {
@@ -232,39 +238,55 @@
             }
         }
         
-        function createFirework() {
-            fireworks.push(new Firework());
-            pendingFireworks--; // 减少待发射计数
+        // 创建烟花，带绽放完成回调
+        function createFirework(onExplodeCallback) {
+            fireworks.push(new Firework(onExplodeCallback));
         }
         
-        // 自动燃放 - 每次随机 1-6 个烟花
-        function autoLaunch() {
-            if (!isActive) return; // 页面非激活时不发射
-            
-            // 如果还有待发射的烟花，跳过这次循环，防止累积
-            if (pendingFireworks > 0) {
-                autoTimer = setTimeout(autoLaunch, 500);
-                return;
-            }
+        // 发射一个批次（1-6个同时升空），等全部绽放完成后再开始下一批
+        async function launchBatch() {
+            if (!isActive || isBatchRunning) return;
+            isBatchRunning = true;
             
             // 随机生成 1-6 个烟花
-            const batchCount = Math.floor(Math.random() * 6) + 1;
-            pendingFireworks = batchCount; // 记录待发射数量
+            const count = Math.floor(Math.random() * 6) + 1;
             
-            for (let i = 0; i < batchCount; i++) {
-                // 错落发射，间隔 200-800ms，避免同时触发
-                setTimeout(() => {
-                    if (isActive) { // 再次检查页面状态
-                        createFirework();
-                    } else {
-                        pendingFireworks = 0; // 页面隐藏时清空待发射
-                    }
-                }, 200 + Math.random() * 600);
+            // 创建所有烟花的 Promise，等全部绽放完成
+            const fireworkPromises = [];
+            
+            for (let i = 0; i < count; i++) {
+                // 错落发射，间隔 100-400ms，同时升空但不同时爆炸
+                const delay = i * (100 + Math.random() * 300);
+                
+                const promise = new Promise(resolve => {
+                    setTimeout(() => {
+                        if (!isActive) {
+                            resolve(); // 页面非激活时直接跳过
+                            return;
+                        }
+                        // 创建烟花，绽放时 resolve
+                        createFirework(() => {
+                            resolve();
+                        });
+                    }, delay);
+                });
+                
+                fireworkPromises.push(promise);
             }
             
-            // 随机间隔 2-4 秒，给足时间发射完
-            const nextTime = Math.random() * 2000 + 2000;
-            autoTimer = setTimeout(autoLaunch, nextTime);
+            // 等待这一批次全部绽放完成
+            await Promise.all(fireworkPromises);
+            
+            // 全部完成后，再延迟一下让爆炸效果充分展开
+            await new Promise(r => setTimeout(r, 800));
+            
+            isBatchRunning = false;
+            
+            // 开始下一批次
+            if (isActive) {
+                const nextTime = Math.random() * 2000 + 1500;
+                autoTimer = setTimeout(launchBatch, nextTime);
+            }
         }
         
         // 启动函数 - 只执行一次
@@ -274,15 +296,19 @@
                 clearTimeout(autoTimer);
                 autoTimer = null;
             }
-            pendingFireworks = 0; // 重置待发射计数
+            isBatchRunning = false;
             
-            // 初始连发
-            setTimeout(() => createFirework(), 500);
-            setTimeout(() => createFirework(), 1500);
-            
-            // 开始自动循环
+            // 初始连发（独立批次，不占用自动循环）
             setTimeout(() => {
-                autoLaunch();
+                createFirework(() => {});
+            }, 500);
+            setTimeout(() => {
+                createFirework(() => {});
+            }, 1500);
+            
+            // 开始自动批次循环
+            setTimeout(() => {
+                launchBatch();
             }, 3000);
         }
         
@@ -291,7 +317,7 @@
             if (document.hidden) {
                 // 页面隐藏：停止自动发射
                 isActive = false;
-                pendingFireworks = 0; // 清空待发射队列
+                isBatchRunning = false;
                 if (autoTimer) {
                     clearTimeout(autoTimer);
                     autoTimer = null;
@@ -299,8 +325,9 @@
             } else {
                 // 页面显示：恢复发射（但检查是否已经在运行）
                 isActive = true;
-                if (!autoTimer) {
-                    autoLaunch();
+                if (!isBatchRunning && !autoTimer) {
+                    // 延迟一点再开始，避免立即触发
+                    autoTimer = setTimeout(launchBatch, 1000);
                 }
             }
         });
