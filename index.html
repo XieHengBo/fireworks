@@ -54,6 +54,8 @@
         let fireworks = [];
         let particles = [];
         let stars = [];
+        let autoTimer = null; // 用于存储定时器，防止重复
+        let isActive = true;  // 页面是否激活
         
         function resize() {
             width = canvas.width = window.innerWidth;
@@ -233,18 +235,55 @@
             fireworks.push(new Firework());
         }
         
-        // 自动燃放
+        // 自动燃放 - 使用递归代替 setTimeout 链，防止重复
         function autoLaunch() {
+            if (!isActive) return; // 页面非激活时不发射
+            
             createFirework();
-            // 随机间隔，模拟真实节奏
+            
+            // 随机间隔 1.5-3.5 秒
             const nextTime = Math.random() * 2000 + 1500;
-            setTimeout(autoLaunch, nextTime);
+            autoTimer = setTimeout(autoLaunch, nextTime);
         }
         
-        // 初始连发
-        setTimeout(() => createFirework(), 500);
-        setTimeout(() => createFirework(), 1500);
-        setTimeout(autoLaunch, 3000);
+        // 启动函数 - 只执行一次
+        function startShow() {
+            // 清除可能存在的旧定时器
+            if (autoTimer) {
+                clearTimeout(autoTimer);
+                autoTimer = null;
+            }
+            
+            // 初始连发
+            setTimeout(() => createFirework(), 500);
+            setTimeout(() => createFirework(), 1500);
+            
+            // 开始自动循环
+            setTimeout(() => {
+                autoLaunch();
+            }, 3000);
+        }
+        
+        // 页面可见性控制 - 防止切回时发射多个
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // 页面隐藏：停止自动发射
+                isActive = false;
+                if (autoTimer) {
+                    clearTimeout(autoTimer);
+                    autoTimer = null;
+                }
+            } else {
+                // 页面显示：恢复发射（但检查是否已经在运行）
+                isActive = true;
+                if (!autoTimer) {
+                    autoLaunch();
+                }
+            }
+        });
+        
+        // 启动（只执行一次）
+        startShow();
         
         function animate() {
             // 半透明拖尾，产生优美轨迹
